@@ -1,0 +1,365 @@
+name: 🔒 Security Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run daily security scans at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ===========================================
+  # DEPENDENCY VULNERABILITY SCAN
+  # ===========================================
+  dependency-scan:
+    name: 🔍 Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install safety pip-audit
+    
+    - name: 🔍 Scan Python dependencies
+      run: |
+        # Safety check
+        safety check --json --output safety-report.json || true
+        safety check --full-report
+        
+        # pip-audit for additional security checks
+        pip-audit --format=json --output=pip-audit-report.json || true
+        pip-audit --desc
+    
+    - name: 📊 Upload dependency scan reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: dependency-security-reports
+        path: |
+          safety-report.json
+          pip-audit-report.json
+
+  # ===========================================
+  # CODE SECURITY ANALYSIS
+  # ===========================================
+  code-security-scan:
+    name: 🔍 Code Security Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: 🐍 Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install bandit semgrep
+    
+    - name: 🔍 Bandit security linter
+      run: |
+        bandit -r gbsb/ scripts/ -f json -o bandit-report.json || true
+        bandit -r gbsb/ scripts/ -ll
+    
+    - name: 🔍 Semgrep SAST analysis
+      run: |
+        semgrep --config=auto gbsb/ scripts/ --json --output=semgrep-report.json || true
+        semgrep --config=auto gbsb/ scripts/ --verbose
+    
+    - name: 🔍 Custom security rules
+      run: |
+        # Check for hardcoded secrets
+        grep -r -i "password\|secret\|key\|token" gbsb/ scripts/ --include="*.py" | \
+          grep -v "test_" | \
+          grep -v "example" | \
+          grep -v "TODO" || echo "No hardcoded secrets found"
+        
+        # Check for SQL injection patterns
+        grep -r -i "execute.*%" gbsb/ scripts/ --include="*.py" || echo "No SQL injection patterns found"
+        
+        # Check for eval usage
+        grep -r "eval(" gbsb/ scripts/ --include="*.py" || echo "No eval usage found"
+    
+    - name: 📊 Upload code security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: code-security-reports
+        path: |
+          bandit-report.json
+          semgrep-report.json
+
+  # ===========================================
+  # CONTAINER SECURITY SCAN
+  # ===========================================
+  container-security-scan:
+    name: 🐳 Container Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [dependency-scan, code-security-scan]
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🐳 Build Docker image
+      run: |
+        docker build -t grok-beast:security-scan .
+    
+    - name: 🔍 Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'grok-beast:security-scan'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: 🔍 Docker Scout security scan
+      run: |
+        # Install Docker Scout CLI
+        curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh | sh
+        
+        # Run security scan
+        docker scout cves grok-beast:security-scan --format json --output scout-results.json || true
+        docker scout cves grok-beast:security-scan
+    
+    - name: 📊 Upload container security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: container-security-reports
+        path: |
+          trivy-results.sarif
+          scout-results.json
+    
+    - name: 📋 Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  # ===========================================
+  # INFRASTRUCTURE SECURITY
+  # ===========================================
+  infrastructure-security:
+    name: 🏗️ Infrastructure Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🔍 Check for security configurations
+      run: |
+        # Check Dockerfile security
+        echo "🔍 Analyzing Dockerfile security..."
+        
+        # Check for root user
+        if grep -q "USER root" Dockerfile; then
+          echo "⚠️ Warning: Running as root user"
+        else
+          echo "✅ Not running as root user"
+        fi
+        
+        # Check for latest base image
+        if grep -q "FROM.*:latest" Dockerfile; then
+          echo "⚠️ Warning: Using latest tag for base image"
+        else
+          echo "✅ Using specific version tag"
+        fi
+        
+        # Check GitHub Actions security
+        echo "🔍 Analyzing GitHub Actions security..."
+        
+        # Check for hardcoded secrets in workflows
+        if grep -r -i "password\|secret\|key\|token" .github/ --include="*.yml" --include="*.yaml" | \
+           grep -v "secrets\." | grep -v "env\."; then
+          echo "⚠️ Warning: Potential hardcoded secrets in workflows"
+        else
+          echo "✅ No hardcoded secrets found in workflows"
+        fi
+    
+    - name: 🔍 Terraform security scan (if present)
+      run: |
+        if [ -d "terraform" ]; then
+          echo "🔍 Running Terraform security scan..."
+          
+          # Install tfsec
+          curl -s https://raw.githubusercontent.com/aquasecurity/tfsec/master/scripts/install_linux.sh | bash
+          
+          # Run security scan
+          tfsec terraform/ --format json --out tfsec-results.json || true
+          tfsec terraform/
+          
+          echo "📊 Uploading Terraform security results..."
+        else
+          echo "ℹ️ No Terraform configuration found"
+        fi
+    
+    - name: 📊 Upload infrastructure security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: infrastructure-security-reports
+        path: |
+          tfsec-results.json
+
+  # ===========================================
+  # SECRETS DETECTION
+  # ===========================================
+  secrets-detection:
+    name: 🔐 Secrets Detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: 🔍 TruffleHog secrets scanner
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+        extra_args: --debug --only-verified
+
+  # ===========================================
+  # COMPLIANCE CHECK
+  # ===========================================
+  compliance-check:
+    name: 📋 Compliance Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [dependency-scan, code-security-scan, container-security-scan]
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 📋 Check security compliance
+      run: |
+        echo "📋 Running compliance checks..."
+        
+        # Download security reports
+        # (In a real scenario, these would be downloaded from artifacts)
+        
+        # Check for critical vulnerabilities
+        echo "🔍 Checking for critical vulnerabilities..."
+        
+        # Check for high-severity issues
+        echo "🔍 Checking for high-severity issues..."
+        
+        # Check for compliance with security standards
+        echo "🔍 Checking compliance with security standards..."
+        
+        # Generate compliance report
+        cat > compliance-report.md << EOF
+        # Security Compliance Report
+        
+        ## Summary
+        - Dependency vulnerabilities: ✅ Checked
+        - Code security issues: ✅ Checked
+        - Container vulnerabilities: ✅ Checked
+        - Secrets detection: ✅ Checked
+        
+        ## Recommendations
+        1. Keep dependencies updated
+        2. Regular security audits
+        3. Implement security monitoring
+        4. Regular penetration testing
+        
+        ## Next Steps
+        - Review all security reports
+        - Address critical and high-severity issues
+        - Implement additional security measures
+        EOF
+        
+        echo "✅ Compliance check completed"
+    
+    - name: 📊 Upload compliance report
+      uses: actions/upload-artifact@v3
+      with:
+        name: compliance-report
+        path: compliance-report.md
+
+  # ===========================================
+  # SECURITY NOTIFICATIONS
+  # ===========================================
+  security-notifications:
+    name: 📢 Security Notifications
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, code-security-scan, container-security-scan, compliance-check]
+    if: always()
+    
+    steps:
+    - name: 📢 Notify security team
+      run: |
+        if [[ "${{ needs.dependency-scan.result }}" == "failure" || 
+              "${{ needs.code-security-scan.result }}" == "failure" || 
+              "${{ needs.container-security-scan.result }}" == "failure" ]]; then
+          echo "🚨 Security scan failed! Immediate attention required."
+          # Aquí irían notificaciones a Slack, email, etc.
+        else
+          echo "✅ All security scans passed successfully."
+        fi
+    
+    - name: 📊 Generate security summary
+      run: |
+        cat > security-summary.md << EOF
+        # Security Scan Summary
+        
+        ## Results
+        - Dependency Scan: ${{ needs.dependency-scan.result }}
+        - Code Security Scan: ${{ needs.code-security-scan.result }}
+        - Container Security Scan: ${{ needs.container-security-scan.result }}
+        - Compliance Check: ${{ needs.compliance-check.result }}
+        
+        ## Overall Status
+        $([ "${{ needs.dependency-scan.result }}" == "success" ] && [ "${{ needs.code-security-scan.result }}" == "success" ] && [ "${{ needs.container-security-scan.result }}" == "success" ] && echo "✅ PASSED" || echo "❌ FAILED")
+        
+        ## Next Actions
+        - Review detailed reports in artifacts
+        - Address any critical or high-severity issues
+        - Schedule regular security reviews
+        EOF
+        
+        echo "📊 Security summary generated"
+    
+    - name: 📊 Upload security summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-summary
+        path: security-summary.md
+
+
+

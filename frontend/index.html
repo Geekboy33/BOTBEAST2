@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grok‑Beast Dashboard</title>
+  
+  <!-- PWA Meta Tags -->
+  <meta name="application-name" content="Grok-Beast" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Grok-Beast" />
+  <meta name="description" content="Dashboard profesional para trading automatizado con AI" />
+  <meta name="format-detection" content="telephone=no" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="msapplication-config" content="/browserconfig.xml" />
+  <meta name="msapplication-TileColor" content="#00FF41" />
+  <meta name="msapplication-tap-highlight" content="no" />
+  <meta name="theme-color" content="#00FF41" />
+  
+  <!-- Apple Touch Icons -->
+  <link rel="apple-touch-icon" href="/icon-192x192.png" />
+  <link rel="apple-touch-icon" sizes="152x152" href="/icon-152x152.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/icon-192x192.png" />
+  <link rel="apple-touch-icon" sizes="167x167" href="/icon-192x192.png" />
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/icon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/icon-16x16.png" />
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  <!-- Manifest -->
+  <link rel="manifest" href="/manifest.json" />
+  
+  <!-- Meta Tags for Social Sharing -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Grok-Beast Trading Dashboard" />
+  <meta property="og:description" content="Dashboard profesional para trading automatizado con AI" />
+  <meta property="og:image" content="/icon-512x512.png" />
+  <meta property="og:url" content="https://grok-beast.com" />
+  <meta property="og:site_name" content="Grok-Beast" />
+  
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Grok-Beast Trading Dashboard" />
+  <meta name="twitter:description" content="Dashboard profesional para trading automatizado con AI" />
+  <meta name="twitter:image" content="/icon-512x512.png" />
+  
+  <script type="module" src="/src/main.tsx"></script>
+</head>
+<body class="bg-gray-900 text-white">
+  <div id="root"></div>
+  
+  <!-- PWA Install Prompt -->
+  <div id="pwa-install-prompt" class="hidden fixed bottom-4 left-4 right-4 bg-gray-800 border border-gray-700 rounded-lg p-4 shadow-lg z-50">
+    <div class="flex items-center justify-between">
+      <div>
+        <h3 class="text-lg font-semibold text-green-400">Instalar App</h3>
+        <p class="text-sm text-gray-400">Instala Grok-Beast para acceso rápido</p>
+      </div>
+      <div class="flex space-x-2">
+        <button id="pwa-install-btn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded text-sm">
+          Instalar
+        </button>
+        <button id="pwa-dismiss-btn" class="bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded text-sm">
+          Ahora no
+        </button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

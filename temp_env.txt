@@ -1,0 +1,42 @@
+OLLAMA_MODEL=gpt-oss:120b
+# Grok-Beast Trading Bot Configuration
+
+# ---- Trading Configuration ---------------------------------
+SYMBOLS=BTCUSDT,ETHUSDT,ADAUSDT
+DRY_RUN=true
+EXCHANGE=binance
+
+# ---- Model Configuration -----------------------------------
+MODEL_PATH=models/dqn_model.pth
+BATCH_SIZE=32
+LEARNING_RATE=0.001
+
+# ---- Risk Management ---------------------------------------
+MAX_POSITION_SIZE=0.1
+STOP_LOSS_PERCENT=0.02
+TAKE_PROFIT_PERCENT=0.04
+
+# ---- Ollama Configuration ----------------------------------
+OLLAMA_HOST=http://127.0.0.1:11434
+
+# ---- Virtual Trader ---------------------------------------
+VIRTUAL_TRADER_ENABLED=true
+VIRTUAL_MAX_NOTIONAL=100000.0
+VIRTUAL_SL_PERCENT=0.015
+VIRTUAL_TP_PERCENT=0.030
+
+# ---- Database ---------------------------------------------
+DATABASE_URL=sqlite:///trading_bot.db
+
+# ---- Redis -------------------------------------------------
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+
+# ---- Security ----------------------------------------------
+SECRET_KEY=your-secret-key-here
+JWT_SECRET=your-jwt-secret-here
+
+# ---- Monitoring --------------------------------------------
+PROMETHEUS_PORT=8001
+GRAFANA_PORT=3000

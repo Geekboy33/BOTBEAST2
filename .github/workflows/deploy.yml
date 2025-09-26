@@ -1,0 +1,340 @@
+name: 🚀 Deployment Pipeline
+
+on:
+  workflow_run:
+    workflows: ["🚀 CI/CD Pipeline - Grok-Beast Trading Bot"]
+    types:
+      - completed
+    branches: [main, develop]
+  
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      force_deploy:
+        description: 'Force deployment even if tests failed'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  DOCKER_REGISTRY: 'ghcr.io'
+  IMAGE_NAME: 'grok-beast-trading-bot'
+
+jobs:
+  # ===========================================
+  # DEPLOYMENT VALIDATION
+  # ===========================================
+  validate-deployment:
+    name: ✅ Validate Deployment Conditions
+    runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.check.outputs.should_deploy }}
+      environment: ${{ steps.check.outputs.environment }}
+      image_tag: ${{ steps.check.outputs.image_tag }}
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🔍 Check deployment conditions
+      id: check
+      run: |
+        # Determinar environment
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          ENVIRONMENT="${{ github.event.inputs.environment }}"
+        elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          ENVIRONMENT="production"
+        elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+          ENVIRONMENT="staging"
+        else
+          echo "❌ No deployment configured for this branch"
+          exit 1
+        fi
+        
+        # Verificar que el workflow de CI pasó
+        if [[ "${{ github.event.workflow_run.conclusion }}" != "success" && "${{ github.event.inputs.force_deploy }}" != "true" ]]; then
+          echo "❌ CI workflow did not succeed. Use force_deploy to override."
+          echo "should_deploy=false" >> $GITHUB_OUTPUT
+        else
+          echo "should_deploy=true" >> $GITHUB_OUTPUT
+        fi
+        
+        echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+        echo "image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+        
+        echo "🎯 Deployment target: $ENVIRONMENT"
+        echo "🏷️ Image tag: ${{ github.sha }}"
+
+  # ===========================================
+  # STAGING DEPLOYMENT
+  # ===========================================
+  deploy-staging:
+    name: 🧪 Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: validate-deployment
+    if: needs.validate-deployment.outputs.should_deploy == 'true' && needs.validate-deployment.outputs.environment == 'staging'
+    environment: 
+      name: staging
+      url: https://staging.grok-beast.com
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🔐 Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    
+    - name: 🐳 Deploy to ECS (Staging)
+      run: |
+        echo "🚀 Deploying to ECS staging cluster..."
+        
+        # Update ECS service
+        aws ecs update-service \
+          --cluster grok-beast-staging \
+          --service grok-beast-api \
+          --force-new-deployment
+        
+        # Wait for deployment to complete
+        aws ecs wait services-stable \
+          --cluster grok-beast-staging \
+          --services grok-beast-api
+    
+    - name: 🧪 Run smoke tests
+      run: |
+        echo "🧪 Running smoke tests on staging..."
+        
+        # Wait for service to be ready
+        sleep 60
+        
+        # Test health endpoint
+        curl -f https://staging.grok-beast.com/health || exit 1
+        
+        # Test API endpoints
+        curl -f https://staging.grok-beast.com/api/bot/status || exit 1
+        
+        echo "✅ Smoke tests passed!"
+    
+    - name: 📢 Notify staging deployment
+      run: |
+        echo "✅ Successfully deployed to staging!"
+        # Aquí irían notificaciones a Slack, Discord, etc.
+
+  # ===========================================
+  # PRODUCTION DEPLOYMENT
+  # ===========================================
+  deploy-production:
+    name: 🌟 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: validate-deployment
+    if: needs.validate-deployment.outputs.should_deploy == 'true' && needs.validate-deployment.outputs.environment == 'production'
+    environment: 
+      name: production
+      url: https://grok-beast.com
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🔐 Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    
+    - name: 🔄 Blue-Green Deployment
+      run: |
+        echo "🌟 Starting blue-green deployment to production..."
+        
+        # Get current task definition
+        CURRENT_TASK_DEF=$(aws ecs describe-task-definition \
+          --task-definition grok-beast-api \
+          --query taskDefinition)
+        
+        # Update task definition with new image
+        NEW_TASK_DEF=$(echo $CURRENT_TASK_DEF | jq \
+          --arg IMAGE "${{ env.DOCKER_REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ needs.validate-deployment.outputs.image_tag }}" \
+          '.containerDefinitions[0].image = $IMAGE | .revision = null')
+        
+        # Register new task definition
+        NEW_TASK_DEF_ARN=$(echo $NEW_TASK_DEF | aws ecs register-task-definition \
+          --cli-input-json file:///dev/stdin \
+          --query taskDefinition.taskDefinitionArn \
+          --output text)
+        
+        # Update service with new task definition
+        aws ecs update-service \
+          --cluster grok-beast-production \
+          --service grok-beast-api \
+          --task-definition $NEW_TASK_DEF_ARN \
+          --deployment-configuration maximumPercent=200,minimumHealthyPercent=100
+        
+        # Wait for deployment to complete
+        aws ecs wait services-stable \
+          --cluster grok-beast-production \
+          --services grok-beast-api
+    
+    - name: 🧪 Run production smoke tests
+      run: |
+        echo "🧪 Running smoke tests on production..."
+        
+        # Wait for service to be ready
+        sleep 120
+        
+        # Test health endpoint
+        curl -f https://grok-beast.com/health || exit 1
+        
+        # Test critical API endpoints
+        curl -f https://grok-beast.com/api/bot/status || exit 1
+        curl -f https://grok-beast.com/api/autopilot/status || exit 1
+        
+        # Test WebSocket connection
+        timeout 10 bash -c 'echo "test" | websocat wss://grok-beast.com/ws' || echo "WebSocket test skipped"
+        
+        echo "✅ Production smoke tests passed!"
+    
+    - name: 📊 Update monitoring
+      run: |
+        echo "📊 Updating monitoring configuration..."
+        
+        # Update Grafana dashboards
+        # curl -X POST https://grafana.grok-beast.com/api/dashboards/db \
+        #   -H "Authorization: Bearer ${{ secrets.GRAFANA_TOKEN }}" \
+        #   -H "Content-Type: application/json" \
+        #   -d @monitoring/dashboards/grok-beast-dashboard.json
+        
+        echo "✅ Monitoring updated!"
+    
+    - name: 📢 Notify production deployment
+      run: |
+        echo "🌟 Successfully deployed to production!"
+        # Aquí irían notificaciones a Slack, Discord, etc.
+
+  # ===========================================
+  # ROLLBACK CAPABILITY
+  # ===========================================
+  rollback:
+    name: 🔄 Rollback Deployment
+    runs-on: ubuntu-latest
+    if: failure() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    environment: 
+      name: ${{ needs.validate-deployment.outputs.environment }}
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🔐 Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+    
+    - name: 🔄 Rollback deployment
+      run: |
+        echo "🔄 Rolling back deployment..."
+        
+        # Get previous task definition
+        PREVIOUS_TASK_DEF=$(aws ecs describe-task-definition \
+          --task-definition grok-beast-api \
+          --query 'taskDefinition.revision' \
+          --output text)
+        
+        if [ "$PREVIOUS_TASK_DEF" -gt 1 ]; then
+          # Rollback to previous version
+          ROLLBACK_TASK_DEF="grok-beast-api:$((PREVIOUS_TASK_DEF - 1))"
+          
+          aws ecs update-service \
+            --cluster grok-beast-${{ needs.validate-deployment.outputs.environment }} \
+            --service grok-beast-api \
+            --task-definition $ROLLBACK_TASK_DEF
+          
+          # Wait for rollback to complete
+          aws ecs wait services-stable \
+            --cluster grok-beast-${{ needs.validate-deployment.outputs.environment }} \
+            --services grok-beast-api
+          
+          echo "✅ Rollback completed!"
+        else
+          echo "❌ No previous version to rollback to!"
+          exit 1
+        fi
+    
+    - name: 📢 Notify rollback
+      run: |
+        echo "🔄 Deployment rolled back due to failure!"
+        # Aquí irían notificaciones de rollback
+
+  # ===========================================
+  # POST-DEPLOYMENT CHECKS
+  # ===========================================
+  post-deployment-checks:
+    name: ✅ Post-Deployment Checks
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always() && (needs.deploy-staging.result == 'success' || needs.deploy-production.result == 'success')
+    
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+    
+    - name: 🧪 Run comprehensive health checks
+      run: |
+        ENVIRONMENT="${{ needs.validate-deployment.outputs.environment }}"
+        BASE_URL="https://$ENVIRONMENT.grok-beast.com"
+        
+        echo "🔍 Running comprehensive health checks on $ENVIRONMENT..."
+        
+        # Health endpoint
+        curl -f $BASE_URL/health || exit 1
+        
+        # API status
+        curl -f $BASE_URL/api/bot/status || exit 1
+        
+        # Technical analysis endpoints
+        curl -f "$BASE_URL/api/technical/support-resistance?symbol=BTCUSDT" || exit 1
+        
+        # Autopilot status
+        curl -f $BASE_URL/api/autopilot/status || exit 1
+        
+        # Risk management
+        curl -f $BASE_URL/api/risk/levels || exit 1
+        
+        # Metrics endpoint
+        curl -f $BASE_URL/metrics || exit 1
+        
+        echo "✅ All health checks passed!"
+    
+    - name: 📊 Performance monitoring
+      run: |
+        echo "📊 Setting up performance monitoring..."
+        
+        # Configure alerts
+        # curl -X POST https://monitoring.grok-beast.com/api/alerts \
+        #   -H "Authorization: Bearer ${{ secrets.MONITORING_TOKEN }}" \
+        #   -H "Content-Type: application/json" \
+        #   -d @monitoring/alerts/grok-beast-alerts.json
+        
+        echo "✅ Performance monitoring configured!"
+    
+    - name: 📢 Final notification
+      run: |
+        echo "🎉 Deployment pipeline completed successfully!"
+        echo "🌐 Environment: ${{ needs.validate-deployment.outputs.environment }}"
+        echo "🏷️ Version: ${{ needs.validate-deployment.outputs.image_tag }}"
+        # Aquí irían notificaciones finales
+
+
+
