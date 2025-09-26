@@ -2,26 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom styles for Grok-Beast Dashboard */
-.grok-beast-gradient {
-  background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-}
-
-.module-card {
-  transition: all 0.3s ease;
-  border: 1px solid #374151;
-}
-
-.module-card:hover {
-  border-color: #fbbf24;
-  transform: translateY(-2px);
-  box-shadow: 0 10px 25px rgba(251, 191, 36, 0.1);
-}
-
-.status-indicator {
-  animation: pulse 2s infinite;
-}
-
+/* Custom animations and styles for Grok-Beast */
 @keyframes pulse {
   0%, 100% {
     opacity: 1;
@@ -31,23 +12,36 @@
   }
 }
 
-.trading-button {
-  transition: all 0.2s ease;
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(-25%);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+  50% {
+    transform: none;
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
 }
 
-.trading-button:hover {
-  transform: scale(1.05);
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-.log-entry {
-  transition: background-color 0.2s ease;
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-.log-entry:hover {
-  background-color: rgba(55, 65, 81, 0.5);
+.animate-bounce {
+  animation: bounce 1s infinite;
 }
 
-/* Scrollbar styling */
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Custom scrollbar */
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;
 }
@@ -66,29 +60,83 @@
   background: #9ca3af;
 }
 
-/* Chart styling */
-.recharts-tooltip-wrapper {
-  border-radius: 8px !important;
+/* Module cards hover effects */
+.module-card {
+  transition: all 0.3s ease;
 }
 
-/* Navigation active state */
-.nav-active {
-  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
-  color: white;
-  box-shadow: 0 4px 15px rgba(251, 191, 36, 0.3);
+.module-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+/* Status indicators */
+.status-online {
+  background: linear-gradient(45deg, #10b981, #059669);
+}
+
+.status-offline {
+  background: linear-gradient(45deg, #ef4444, #dc2626);
+}
+
+.status-warning {
+  background: linear-gradient(45deg, #f59e0b, #d97706);
+}
+
+/* Trading interface styles */
+.trading-button {
+  transition: all 0.2s ease;
+}
+
+.trading-button:hover {
+  transform: scale(1.05);
+}
+
+.trading-button:active {
+  transform: scale(0.95);
+}
+
+/* Chart container styles */
+.chart-container {
+  background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+}
+
+/* Glow effects */
+.glow-green {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+.glow-red {
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+}
+
+.glow-yellow {
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+}
+
+.glow-blue {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
 }
 
 /* Performance indicators */
-.performance-high {
+.performance-excellent {
   color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
 }
 
-.performance-medium {
-  color: #fbbf24;
+.performance-good {
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
 }
 
-.performance-low {
+.performance-average {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.performance-poor {
   color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
 }
 
 /* Module type indicators */
@@ -108,7 +156,7 @@
   border-left: 4px solid #ef4444;
 }
 
-/* Responsive design */
+/* Responsive design helpers */
 @media (max-width: 768px) {
   .nav-horizontal {
     flex-direction: column;
@@ -120,7 +168,7 @@
   }
 }
 
-/* Loading animations */
+/* Loading states */
 .loading-shimmer {
   background: linear-gradient(90deg, #374151 25%, #4b5563 50%, #374151 75%);
   background-size: 200% 100%;
@@ -137,14 +185,48 @@
 }
 
 /* Success/Error states */
-.success-glow {
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+.success-state {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
 }
 
-.error-glow {
-  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+.error-state {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
 }
 
-.warning-glow {
-  box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+.warning-state {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+}
+
+/* Trading interface specific styles */
+.order-book-bid {
+  background: rgba(16, 185, 129, 0.1);
+  border-left: 3px solid #10b981;
+}
+
+.order-book-ask {
+  background: rgba(239, 68, 68, 0.1);
+  border-left: 3px solid #ef4444;
+}
+
+.price-up {
+  color: #10b981;
+  animation: flash-green 0.5s ease-in-out;
+}
+
+.price-down {
+  color: #ef4444;
+  animation: flash-red 0.5s ease-in-out;
+}
+
+@keyframes flash-green {
+  0% { background-color: rgba(16, 185, 129, 0.3); }
+  100% { background-color: transparent; }
+}
+
+@keyframes flash-red {
+  0% { background-color: rgba(239, 68, 68, 0.3); }
+  100% { background-color: transparent; }
 }

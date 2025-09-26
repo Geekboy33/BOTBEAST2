@@ -1,38 +1,52 @@
 import React, { useState, useEffect } from 'react';
 
 interface AIStatus {
-  autopilot_enabled: boolean;
   ollama_connected: boolean;
   model: string;
   accuracy: number;
   predictions_today: number;
-  confidence: number;
+  last_prediction: string;
 }
 
-const AIController: React.FC = () => {
+export default function AIController() {
   const [aiStatus, setAIStatus] = useState<AIStatus>({
-    autopilot_enabled: false,
     ollama_connected: true,
     model: 'gpt-oss:120b',
     accuracy: 0.85,
     predictions_today: 120,
-    confidence: 0.78
+    last_prediction: new Date().toISOString()
   });
 
+  const [autopilotEnabled, setAutopilotEnabled] = useState(false);
   const [riskLevel, setRiskLevel] = useState<'conservative' | 'risky' | 'turbo'>('conservative');
   const [maxLeverage, setMaxLeverage] = useState(2);
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.7);
 
+  useEffect(() => {
+    loadAIStatus();
+    const interval = setInterval(loadAIStatus, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadAIStatus = async () => {
+    try {
+      const response = await fetch('/api/ai/status');
+      if (response.ok) {
+        const data = await response.json();
+        setAIStatus(data);
+      }
+    } catch (error) {
+      console.log('Using mock AI data');
+    }
+  };
+
   const toggleAutopilot = async () => {
     try {
-      const endpoint = aiStatus.autopilot_enabled ? '/api/bot/stop' : '/api/bot/start';
+      const endpoint = autopilotEnabled ? '/api/bot/stop' : '/api/bot/start';
       const response = await fetch(endpoint, { method: 'POST' });
       
       if (response.ok) {
-        setAIStatus(prev => ({
-          ...prev,
-          autopilot_enabled: !prev.autopilot_enabled
-        }));
+        setAutopilotEnabled(!autopilotEnabled);
       }
     } catch (error) {
       console.error('Error toggling autopilot:', error);
@@ -40,15 +54,27 @@ const AIController: React.FC = () => {
   };
 
   const updateRiskLevel = async (newLevel: 'conservative' | 'risky' | 'turbo') => {
-    setRiskLevel(newLevel);
-    
-    // Update leverage based on risk level
-    const leverageMap = {
-      conservative: 2,
-      risky: 5,
-      turbo: 10
-    };
-    setMaxLeverage(leverageMap[newLevel]);
+    try {
+      const response = await fetch('/api/risk/set-level', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ risk_level: newLevel })
+      });
+      
+      if (response.ok) {
+        setRiskLevel(newLevel);
+        
+        // Update leverage based on risk level
+        const leverageMap = {
+          conservative: 2,
+          risky: 5,
+          turbo: 10
+        };
+        setMaxLeverage(leverageMap[newLevel]);
+      }
+    } catch (error) {
+      console.error('Error updating risk level:', error);
+    }
   };
 
   return (
@@ -64,24 +90,24 @@ const AIController: React.FC = () => {
           <button
             onClick={toggleAutopilot}
             className={`px-6 py-2 rounded font-semibold ${
-              aiStatus.autopilot_enabled 
+              autopilotEnabled 
                 ? 'bg-red-600 hover:bg-red-700 text-white' 
                 : 'bg-green-600 hover:bg-green-700 text-white'
             }`}
           >
-            {aiStatus.autopilot_enabled ? 'STOP AUTOPILOT' : 'START AUTOPILOT'}
+            {autopilotEnabled ? 'STOP AUTOPILOT' : 'START AUTOPILOT'}
           </button>
         </div>
       </div>
 
-      {/* AI Status */}
+      {/* AI Status Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-white">Autopilot Status</h3>
-              <p className={`text-2xl font-bold ${aiStatus.autopilot_enabled ? 'text-green-400' : 'text-red-400'}`}>
-                {aiStatus.autopilot_enabled ? 'ACTIVE' : 'INACTIVE'}
+              <p className={`text-2xl font-bold ${autopilotEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                {autopilotEnabled ? 'ACTIVE' : 'INACTIVE'}
               </p>
             </div>
             <div className="text-3xl">🤖</div>
@@ -172,20 +198,6 @@ const AIController: React.FC = () => {
                 className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white"
               />
             </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-gray-300">Enable Autopilot</span>
-              <button
-                onClick={toggleAutopilot}
-                className={`w-12 h-6 rounded-full transition-colors ${
-                  aiStatus.autopilot_enabled ? 'bg-green-600' : 'bg-gray-600'
-                }`}
-              >
-                <div className={`w-5 h-5 bg-white rounded-full transition-transform ${
-                  aiStatus.autopilot_enabled ? 'translate-x-6' : 'translate-x-0.5'
-                }`}></div>
-              </button>
-            </div>
           </div>
         </div>
 
@@ -198,8 +210,8 @@ const AIController: React.FC = () => {
                 <div className="text-sm text-gray-400">Accuracy</div>
               </div>
               <div className="text-center p-4 bg-gray-700 rounded">
-                <div className="text-2xl font-bold text-blue-400">{(aiStatus.confidence * 100).toFixed(1)}%</div>
-                <div className="text-sm text-gray-400">Confidence</div>
+                <div className="text-2xl font-bold text-blue-400">{aiStatus.predictions_today}</div>
+                <div className="text-sm text-gray-400">Predictions</div>
               </div>
             </div>
 
@@ -209,16 +221,16 @@ const AIController: React.FC = () => {
                 <span className="text-white font-semibold">{aiStatus.model}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">Predictions Today:</span>
-                <span className="text-white font-semibold">{aiStatus.predictions_today}</span>
-              </div>
-              <div className="flex justify-between">
                 <span className="text-gray-400">Risk Level:</span>
                 <span className="text-white font-semibold capitalize">{riskLevel}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-400">Max Leverage:</span>
                 <span className="text-white font-semibold">{maxLeverage}x</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Confidence:</span>
+                <span className="text-white font-semibold">{confidenceThreshold}</span>
               </div>
             </div>
           </div>
@@ -252,6 +264,4 @@ const AIController: React.FC = () => {
       </div>
     </div>
   );
-};
-
-export default AIController;
+}

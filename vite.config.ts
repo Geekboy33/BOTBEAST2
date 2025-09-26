@@ -4,25 +4,35 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 3000,
+    port: 5173,
+    host: true,
     proxy: {
-      '/api': 'http://localhost:3000',
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false
+      },
       '/ws': {
-        target: 'ws://localhost:3000',
-        ws: true
+        target: 'ws://localhost:3001',
+        ws: true,
+        changeOrigin: true
       }
     }
   },
   build: {
     outDir: 'dist',
+    sourcemap: true,
     rollupOptions: {
       output: {
         manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'charts': ['recharts'],
-          'utils': ['axios']
+          'utils': ['axios', 'date-fns', 'lodash']
         }
       }
     }
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react-router-dom', 'recharts', 'axios']
   }
 })
