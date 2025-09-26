@@ -12,7 +12,7 @@ echo 🔌 WebSocket en ws://localhost:8000/ws
 echo.
 
 REM Iniciar dashboard
-python scripts/run_dashboard_simple.py
+".venv\Scripts\python.exe" scripts\run_dashboard_simple.py
 
 echo.
 echo ❌ Dashboard detenido
